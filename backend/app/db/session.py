@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from sqlalchemy import create_engine, event, text
@@ -25,15 +26,43 @@ def initialize_database(database_url: str | None = None) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def create_engine_for_url(database_url: str) -> Engine:
-    initialize_database(database_url)
-    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-    engine_kwargs = {"connect_args": connect_args, "future": True}
+def _vercel_sqlite_fallback(database_url: str) -> str:
+    if not os.getenv("VERCEL"):
+        return database_url
+    if not database_url.startswith("sqlite:///"):
+        return database_url
     if database_url == "sqlite:///:memory:":
-        engine_kwargs["poolclass"] = StaticPool
-    engine = create_engine(database_url, **engine_kwargs)
+        return database_url
 
-    if database_url.startswith("sqlite"):
+    sqlite_path = _sqlite_path(database_url)
+    if sqlite_path is None:
+        return database_url
+
+    # Vercel runtime filesystem is read-only except /tmp.
+    if not sqlite_path.is_absolute() or str(sqlite_path).startswith("data"):
+        return "sqlite:////tmp/endurasync.db"
+
+    return database_url
+
+
+def create_engine_for_url(database_url: str) -> Engine:
+    normalized_url = _vercel_sqlite_fallback(database_url)
+    try:
+        initialize_database(normalized_url)
+    except OSError:
+        if os.getenv("VERCEL") and normalized_url.startswith("sqlite:///"):
+            normalized_url = "sqlite:////tmp/endurasync.db"
+            initialize_database(normalized_url)
+        else:
+            raise
+
+    connect_args = {"check_same_thread": False} if normalized_url.startswith("sqlite") else {}
+    engine_kwargs = {"connect_args": connect_args, "future": True}
+    if normalized_url == "sqlite:///:memory:":
+        engine_kwargs["poolclass"] = StaticPool
+    engine = create_engine(normalized_url, **engine_kwargs)
+
+    if normalized_url.startswith("sqlite"):
 
         @event.listens_for(engine, "connect")
         def enable_sqlite_wal(dbapi_connection, _connection_record) -> None:  # type: ignore[no-untyped-def]
