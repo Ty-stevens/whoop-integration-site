@@ -1,18 +1,43 @@
-# EnduraSync
+# EnduraSync - WHOOP Integration Website
 
-EnduraSync is a private WHOOP-integrated training dashboard. It is built as a single-repo modular monolith with a React + TypeScript + Vite frontend, a FastAPI backend, SQLite, SQLAlchemy, and Alembic.
+EnduraSync is a WHOOP-connected training intelligence web app that turns recovery, strain, sleep, and workout data into actionable dashboards and trend reporting.
 
-The source of truth for product scope and sequencing is `BUILD_PLAN.md`.
+It is built as a modular monolith with:
 
-## Local Development
+- Frontend: React, TypeScript, Vite
+- Backend: FastAPI, SQLAlchemy, Alembic
+- Data store: SQLite (default)
+- Deployment target: Docker Compose on a private server
 
-1. Copy `.env.example` to `.env.local`:
+The project planning source of truth is [`BUILD_PLAN.md`](./BUILD_PLAN.md).
+
+## Features
+
+- WHOOP OAuth integration and sync orchestration
+- Dashboard views for recovery, strain, training log, and goals
+- Six-month reporting and progress views
+- Data integrity checks and scheduled sync support
+- Optional AI summary pipeline with server-side privacy controls
+
+## Project Structure
+
+```text
+backend/    FastAPI API, services, models, migrations, tests
+frontend/   React app, routes, shared UI components, tests
+deploy/     Docker Compose and deployment templates
+docs/       ADRs, architecture notes, runbooks
+scripts/    Operational utility scripts
+```
+
+## Quick Start (Local Development)
+
+1. Create local environment variables:
 
 ```bash
 cp .env.example .env.local
 ```
 
-2. Install backend dependencies in `backend/.venv`:
+2. Set up backend dependencies:
 
 ```bash
 cd backend
@@ -22,7 +47,7 @@ pip install -e ".[dev]"
 cd ..
 ```
 
-3. Install frontend dependencies:
+3. Set up frontend dependencies:
 
 ```bash
 cd frontend
@@ -37,16 +62,15 @@ make backend-dev
 make frontend-dev
 ```
 
-The backend serves health checks at:
+5. Open:
 
-- `http://localhost:8000/health`
-- `http://localhost:8000/api/v1/health`
+- Frontend: `http://localhost:5173`
+- Backend health: `http://localhost:8000/health`
+- API health: `http://localhost:8000/api/v1/health`
 
-The frontend dev server runs at `http://localhost:5173`.
+## Common Commands
 
-## Command Contract
-
-The root `Makefile` defines the commands later phases should preserve:
+The root `Makefile` provides:
 
 - `make backend-dev`
 - `make frontend-dev`
@@ -58,6 +82,10 @@ The root `Makefile` defines the commands later phases should preserve:
 - `make integrity`
 - `make build`
 
-## Privacy Posture
+## Privacy and Security
 
-Version 1 targets Docker Compose on a Tailscale-only private server. WHOOP tokens, raw provider payloads, and AI provider secrets must remain server-side. AI is disabled by default and, when added later, will use derived metrics plus optional athlete profile context rather than WHOOP tokens or raw payloads.
+WHOOP tokens, provider payloads, and AI provider secrets are kept server-side. AI features are optional and disabled by default in baseline deployments.
+
+## Deployment
+
+See deployment templates in [`deploy/`](./deploy) and runbooks in [`docs/runbooks/`](./docs/runbooks).
