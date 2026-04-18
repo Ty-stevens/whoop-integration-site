@@ -1,0 +1,72 @@
+from pathlib import Path
+
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.core.config import get_settings
+
+
+def _sqlite_path(database_url: str) -> Path | None:
+    prefix = "sqlite:///"
+    if not database_url.startswith(prefix):
+        return None
+    raw_path = database_url.removeprefix(prefix)
+    if raw_path == ":memory:":
+        return None
+    return Path(raw_path)
+
+
+def initialize_database(database_url: str | None = None) -> None:
+    url = database_url or get_settings().database_url
+    db_path = _sqlite_path(url)
+    if db_path is not None:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def create_engine_for_url(database_url: str) -> Engine:
+    initialize_database(database_url)
+    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+    engine_kwargs = {"connect_args": connect_args, "future": True}
+    if database_url == "sqlite:///:memory:":
+        engine_kwargs["poolclass"] = StaticPool
+    engine = create_engine(database_url, **engine_kwargs)
+
+    if database_url.startswith("sqlite"):
+
+        @event.listens_for(engine, "connect")
+        def enable_sqlite_wal(dbapi_connection, _connection_record) -> None:  # type: ignore[no-untyped-def]
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA foreign_keys=ON")
+            finally:
+                cursor.close()
+
+    return engine
+
+
+settings = get_settings()
+engine = create_engine_for_url(settings.database_url)
+SessionLocal = sessionmaker(
+    bind=engine,
+    autoflush=False,
+    autocommit=False,
+    expire_on_commit=False,
+    future=True,
+)
+
+
+def get_db() -> Session:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def check_database() -> bool:
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+    return True

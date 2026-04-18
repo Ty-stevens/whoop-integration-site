@@ -1,0 +1,3 @@
+# Run scheduled sync every 30 minutes from the Compose checkout directory.
+# Adjust the path if the stack lives somewhere else on the host.
+*/30 * * * * cd /opt/endurasync/deploy && /usr/bin/flock -n /tmp/endurasync-sync.lock /usr/bin/docker compose run --rm backend python -m app.jobs.run_sync --trigger scheduled --resource all >> /var/log/endurasync-sync.log 2>&1
