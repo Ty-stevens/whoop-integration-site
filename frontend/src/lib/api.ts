@@ -9,22 +9,44 @@ export class ApiError extends Error {
   }
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+function defaultApiBaseUrl() {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  // Vercel Services mounts the FastAPI service at /backend in this project.
+  if (typeof window !== "undefined" && window.location.hostname.endsWith(".vercel.app")) {
+    return "/backend";
+  }
+  return "";
+}
+
+const apiBaseUrl = defaultApiBaseUrl();
+const apiAuthToken = import.meta.env.VITE_API_AUTH_TOKEN ?? "";
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> | undefined)
+  };
+  if (apiAuthToken) {
+    headers["X-API-Key"] = apiAuthToken;
+  }
+
   const response = await fetch(`${apiBaseUrl}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    },
+    headers,
     ...init
   });
 
   const contentType = response.headers.get("content-type") ?? "";
-  const body = contentType.includes("application/json") ? await response.json() : await response.text();
+  const isJson = contentType.includes("application/json");
+  const body = isJson ? await response.json() : await response.text();
 
   if (!response.ok) {
     throw new ApiError("Request failed", response.status, body);
+  }
+
+  if (!isJson) {
+    throw new ApiError("Expected JSON response from API", response.status, body);
   }
 
   return body as T;
