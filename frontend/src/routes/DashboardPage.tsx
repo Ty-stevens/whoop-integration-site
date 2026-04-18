@@ -13,6 +13,53 @@ import { formatDateRangeLabel, formatLongDate } from "../lib/dates";
 import { minutesLabel } from "../lib/format";
 import { zoneColors, zoneLabels } from "../lib/zones";
 
+function isSessionProgress(value: unknown): value is CurrentWeekDashboard["cardio_sessions"] {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.completed === "number" &&
+    typeof candidate.target === "number" &&
+    typeof candidate.remaining === "number"
+  );
+}
+
+function isDashboardPayload(value: unknown): value is CurrentWeekDashboard {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.week_start_date === "string" &&
+    typeof candidate.week_end_date === "string" &&
+    Array.isArray(candidate.zones) &&
+    isSessionProgress(candidate.cardio_sessions) &&
+    isSessionProgress(candidate.strength_sessions) &&
+    typeof candidate.total_training_seconds === "number"
+  );
+}
+
+function isSyncPayload(value: unknown): value is SyncStatus {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  if (!candidate.counts || typeof candidate.counts !== "object") {
+    return false;
+  }
+  const counts = candidate.counts as Record<string, unknown>;
+  return (
+    typeof candidate.status === "string" &&
+    typeof candidate.message === "string" &&
+    typeof candidate.auto_sync_enabled === "boolean" &&
+    typeof counts.inserted === "number" &&
+    typeof counts.updated === "number" &&
+    typeof counts.unchanged === "number" &&
+    typeof counts.failed === "number"
+  );
+}
+
 function formatPercent(value: number | null) {
   return value === null ? "—" : `${Math.round(value)}%`;
 }
@@ -84,8 +131,11 @@ export function DashboardPage() {
     mutationFn: () => apiFetch<AiWeeklySummary>("/api/v1/ai/weekly-summary", { method: "POST" })
   });
 
-  const weekLabel = dashboardQuery.data
-    ? formatDateRangeLabel(dashboardQuery.data.week_start_date, dashboardQuery.data.week_end_date)
+  const dashboardData = isDashboardPayload(dashboardQuery.data) ? dashboardQuery.data : null;
+  const syncData = isSyncPayload(syncStatusQuery.data) ? syncStatusQuery.data : null;
+
+  const weekLabel = dashboardData
+    ? formatDateRangeLabel(dashboardData.week_start_date, dashboardData.week_end_date)
     : "Current ISO week";
 
   return (
@@ -96,38 +146,44 @@ export function DashboardPage() {
 
       {dashboardQuery.isLoading ? <LoadingState message="Loading current week metrics" /> : null}
       {dashboardQuery.isError ? <ErrorState message="Current week metrics are unavailable right now." /> : null}
+      {dashboardQuery.isSuccess && !dashboardData ? (
+        <ErrorState message="Dashboard response was invalid. Check backend deployment config." />
+      ) : null}
       {syncStatusQuery.isLoading ? <LoadingState message="Loading sync status" /> : null}
       {syncStatusQuery.isError ? <ErrorState message="Sync status is unavailable right now." /> : null}
+      {syncStatusQuery.isSuccess && !syncData ? (
+        <ErrorState message="Sync status response was invalid. Check backend deployment config." />
+      ) : null}
 
-      {dashboardQuery.data ? (
+      {dashboardData ? (
         <>
           <div className="grid gap-4 lg:grid-cols-4">
             <Card className="lg:col-span-2">
               <StatBlock
                 label="Weekly training"
-                value={formatSeconds(dashboardQuery.data.total_training_seconds)}
-                hint={`Week start ${formatLongDate(dashboardQuery.data.week_start_date)}`}
+                value={formatSeconds(dashboardData.total_training_seconds)}
+                hint={`Week start ${formatLongDate(dashboardData.week_start_date)}`}
               />
             </Card>
             <Card>
               <StatBlock
                 label="Cardio sessions"
-                value={`${dashboardQuery.data.cardio_sessions.completed} / ${dashboardQuery.data.cardio_sessions.target}`}
-                hint={`${dashboardQuery.data.cardio_sessions.remaining} remaining`}
+                value={`${dashboardData.cardio_sessions.completed} / ${dashboardData.cardio_sessions.target}`}
+                hint={`${dashboardData.cardio_sessions.remaining} remaining`}
               />
             </Card>
             <Card>
               <StatBlock
                 label="Strength sessions"
-                value={`${dashboardQuery.data.strength_sessions.completed} / ${dashboardQuery.data.strength_sessions.target}`}
-                hint={`${dashboardQuery.data.strength_sessions.remaining} remaining`}
+                value={`${dashboardData.strength_sessions.completed} / ${dashboardData.strength_sessions.target}`}
+                hint={`${dashboardData.strength_sessions.remaining} remaining`}
               />
             </Card>
           </div>
 
           <SectionShell title="HR Zone Progress">
             <div className="grid gap-4 lg:grid-cols-5">
-              {dashboardQuery.data.zones.map((zone) => (
+              {dashboardData.zones.map((zone) => (
                 <Card key={zone.zone}>
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <p className="font-semibold">{zoneLabels[`zone${zone.zone}` as keyof typeof zoneLabels]}</p>
@@ -150,22 +206,22 @@ export function DashboardPage() {
               <Card>
                 <StatBlock
                   label="Average recovery"
-                  value={dashboardQuery.data.average_recovery_score === null ? "—" : Math.round(dashboardQuery.data.average_recovery_score).toString()}
+                  value={dashboardData.average_recovery_score === null ? "—" : Math.round(dashboardData.average_recovery_score).toString()}
                   hint="Backend-derived from synced recovery records"
                 />
               </Card>
               <Card>
                 <StatBlock
                   label="Average daily strain"
-                  value={dashboardQuery.data.average_daily_strain === null ? "—" : Math.round(dashboardQuery.data.average_daily_strain).toString()}
+                  value={dashboardData.average_daily_strain === null ? "—" : Math.round(dashboardData.average_daily_strain).toString()}
                   hint="Backend-derived from synced workout records"
                 />
               </Card>
               <Card>
                 <StatBlock
                   label="Goal profile"
-                  value={dashboardQuery.data.has_goal_profile ? `#${dashboardQuery.data.goal_profile_id}` : "Unset"}
-                  hint={dashboardQuery.data.has_goal_profile ? "Active for this week" : "No active goal profile"}
+                  value={dashboardData.has_goal_profile ? `#${dashboardData.goal_profile_id}` : "Unset"}
+                  hint={dashboardData.has_goal_profile ? "Active for this week" : "No active goal profile"}
                 />
               </Card>
             </div>
@@ -203,12 +259,12 @@ export function DashboardPage() {
       <SectionShell title="Sync Status">
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
-            {syncStatusQuery.data ? (
+            {syncData ? (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-lg font-semibold">{syncBadge(syncStatusQuery.data.status)}</p>
-                    <p className="mt-1 text-sm text-muted">{syncStatusQuery.data.message}</p>
+                    <p className="text-lg font-semibold">{syncBadge(syncData.status)}</p>
+                    <p className="mt-1 text-sm text-muted">{syncData.message}</p>
                   </div>
                   <Button disabled={manualRefresh.isPending} onClick={() => manualRefresh.mutate()}>
                     {manualRefresh.isPending ? "Refreshing" : "Refresh now"}
@@ -218,14 +274,14 @@ export function DashboardPage() {
                   <div>
                     <p className="text-muted">Auto sync</p>
                     <p className="font-semibold">
-                      {syncStatusQuery.data.auto_sync_enabled ? syncStatusQuery.data.auto_sync_frequency : "Disabled"}
+                      {syncData.auto_sync_enabled ? syncData.auto_sync_frequency : "Disabled"}
                     </p>
                   </div>
                   <div>
                     <p className="text-muted">Last success</p>
                     <p className="font-semibold">
-                      {syncStatusQuery.data.last_success_at_utc
-                        ? formatLongDate(syncStatusQuery.data.last_success_at_utc.slice(0, 10))
+                      {syncData.last_success_at_utc
+                        ? formatLongDate(syncData.last_success_at_utc.slice(0, 10))
                         : "None yet"}
                     </p>
                   </div>
@@ -233,19 +289,19 @@ export function DashboardPage() {
                 <div className="grid gap-3 text-sm sm:grid-cols-4">
                   <div>
                     <p className="text-muted">Inserted</p>
-                    <p className="font-semibold">{syncStatusQuery.data.counts.inserted}</p>
+                    <p className="font-semibold">{syncData.counts.inserted}</p>
                   </div>
                   <div>
                     <p className="text-muted">Updated</p>
-                    <p className="font-semibold">{syncStatusQuery.data.counts.updated}</p>
+                    <p className="font-semibold">{syncData.counts.updated}</p>
                   </div>
                   <div>
                     <p className="text-muted">Unchanged</p>
-                    <p className="font-semibold">{syncStatusQuery.data.counts.unchanged}</p>
+                    <p className="font-semibold">{syncData.counts.unchanged}</p>
                   </div>
                   <div>
                     <p className="text-muted">Failed</p>
-                    <p className="font-semibold">{syncStatusQuery.data.counts.failed}</p>
+                    <p className="font-semibold">{syncData.counts.failed}</p>
                   </div>
                 </div>
                 {manualRefresh.isError ? (
@@ -256,29 +312,29 @@ export function DashboardPage() {
           </Card>
 
           <Card>
-            {dashboardQuery.data ? (
+            {dashboardData ? (
               <div className="space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-semibold">Week snapshot</p>
-                  <span className="text-muted">{dashboardQuery.data.last_successful_sync_at_utc ? "Synced" : "Waiting"}</span>
+                  <span className="text-muted">{dashboardData.last_successful_sync_at_utc ? "Synced" : "Waiting"}</span>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <p className="text-muted">Week range</p>
-                    <p className="font-semibold">{formatDateRangeLabel(dashboardQuery.data.week_start_date, dashboardQuery.data.week_end_date)}</p>
+                    <p className="font-semibold">{formatDateRangeLabel(dashboardData.week_start_date, dashboardData.week_end_date)}</p>
                   </div>
                   <div>
                     <p className="text-muted">Current target volume</p>
                     <p className="font-semibold">
-                      {dashboardQuery.data.zones.reduce((total, zone) => total + zone.target_minutes, 0)} min
+                      {dashboardData.zones.reduce((total, zone) => total + zone.target_minutes, 0)} min
                     </p>
                   </div>
                 </div>
                 <div>
                   <p className="text-muted">Last synced</p>
                   <p className="font-semibold">
-                    {dashboardQuery.data.last_successful_sync_at_utc
-                      ? new Date(dashboardQuery.data.last_successful_sync_at_utc).toLocaleString()
+                    {dashboardData.last_successful_sync_at_utc
+                      ? new Date(dashboardData.last_successful_sync_at_utc).toLocaleString()
                       : "No successful sync yet"}
                   </p>
                 </div>
