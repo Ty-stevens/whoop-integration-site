@@ -9,6 +9,8 @@ export class ApiError extends Error {
   }
 }
 
+const API_TOKEN_STORAGE_KEY = "endurasync_api_token";
+
 function defaultApiBaseUrl() {
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL;
@@ -21,19 +23,55 @@ function defaultApiBaseUrl() {
 }
 
 const apiBaseUrl = defaultApiBaseUrl();
-const apiAuthToken = import.meta.env.VITE_API_AUTH_TOKEN ?? "";
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+function runtimeApiToken() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.sessionStorage.getItem(API_TOKEN_STORAGE_KEY) ?? "";
+}
+
+function activeApiToken() {
+  return runtimeApiToken() || (import.meta.env.VITE_API_AUTH_TOKEN ?? "");
+}
+
+export function hasApiToken() {
+  return Boolean(activeApiToken());
+}
+
+export function setApiToken(token: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.setItem(API_TOKEN_STORAGE_KEY, token.trim());
+}
+
+export function clearApiToken() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.removeItem(API_TOKEN_STORAGE_KEY);
+}
+
+export function apiUrl(path: string) {
+  return `${apiBaseUrl}${path}`;
+}
+
+function authHeaders(initHeaders?: unknown) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(init?.headers as Record<string, string> | undefined)
+    ...(initHeaders as Record<string, string> | undefined)
   };
-  if (apiAuthToken) {
-    headers["X-API-Key"] = apiAuthToken;
+  const token = activeApiToken();
+  if (token) {
+    headers["X-API-Key"] = token;
   }
+  return headers;
+}
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    headers,
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(apiUrl(path), {
+    headers: authHeaders(init?.headers),
     ...init
   });
 
@@ -50,6 +88,23 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
 
   return body as T;
+}
+
+export async function apiOpenRedirect(path: string): Promise<void> {
+  const response = await fetch(apiUrl(path), {
+    method: "GET",
+    headers: authHeaders(),
+    redirect: "manual"
+  });
+  const location = response.headers.get("location");
+  if (response.status >= 300 && response.status < 400 && location) {
+    window.location.assign(location);
+    return;
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const details = contentType.includes("application/json") ? await response.json() : await response.text();
+  throw new ApiError("WHOOP connect request failed", response.status, details);
 }
 
 export type HealthResponse = {

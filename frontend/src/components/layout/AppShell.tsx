@@ -1,6 +1,8 @@
 import { NavLink, Outlet } from "react-router-dom";
 
+import { clearApiToken } from "../../lib/api";
 import { Badge } from "../ui/Badge";
+import { Button } from "../ui/Button";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard" },
@@ -41,6 +43,15 @@ export function AppShell() {
                 {item.label}
               </NavLink>
             ))}
+            <Button
+              variant="secondary"
+              onClick={() => {
+                clearApiToken();
+                window.location.reload();
+              }}
+            >
+              Lock
+            </Button>
           </nav>
         </div>
       </div>

@@ -8,7 +8,7 @@ import { ErrorState } from "../components/ui/ErrorState";
 import { LoadingState } from "../components/ui/LoadingState";
 import { PageHeader } from "../components/ui/PageHeader";
 import { SectionShell } from "../components/ui/SectionShell";
-import { apiFetch, type AiStatus, type AppSettings, type AthleteProfile, type WhoopStatus } from "../lib/api";
+import { apiFetch, apiOpenRedirect, type AiStatus, type AppSettings, type AthleteProfile, type WhoopStatus } from "../lib/api";
 
 type ProfileForm = {
   display_name: string;
@@ -124,6 +124,13 @@ export function SettingsPage() {
     }
   });
 
+  const connectWhoop = useMutation({
+    mutationFn: async () => {
+      await apiOpenRedirect("/api/v1/integrations/whoop/connect");
+      return true;
+    }
+  });
+
   function onProfileSubmit(event: FormEvent) {
     event.preventDefault();
     saveProfile.mutate();
@@ -157,9 +164,16 @@ export function SettingsPage() {
                 ) : null}
               </div>
               <div className="flex flex-wrap gap-2">
-                <a href="/api/v1/integrations/whoop/connect">
-                  <Button>{whoopQuery.data.status === "connected" ? "Reconnect WHOOP" : "Connect WHOOP"}</Button>
-                </a>
+                <Button
+                  disabled={connectWhoop.isPending}
+                  onClick={() => connectWhoop.mutate()}
+                >
+                  {connectWhoop.isPending
+                    ? "Opening WHOOP..."
+                    : whoopQuery.data.status === "connected"
+                      ? "Reconnect WHOOP"
+                      : "Connect WHOOP"}
+                </Button>
                 {whoopQuery.data.status === "connected" || whoopQuery.data.status === "expired" ? (
                   <Button
                     variant="secondary"
