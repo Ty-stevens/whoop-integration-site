@@ -6,7 +6,9 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import app.models  # noqa: F401
 from app.core.config import get_settings
+from app.db.base import Base
 
 
 def _sqlite_path(database_url: str) -> Path | None:
@@ -72,6 +74,10 @@ def create_engine_for_url(database_url: str) -> Engine:
                 cursor.execute("PRAGMA foreign_keys=ON")
             finally:
                 cursor.close()
+
+        # Vercel-backed SQLite databases are ephemeral and start empty.
+        # Ensure the application schema exists before any route touches the DB.
+        Base.metadata.create_all(bind=engine)
 
     return engine
 
