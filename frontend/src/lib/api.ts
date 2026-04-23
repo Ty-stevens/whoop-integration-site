@@ -113,6 +113,7 @@ export type HealthResponse = {
   environment: string;
   version: string;
   database: boolean;
+  api_auth_required: boolean;
 };
 
 export type WhoopStatus = {
