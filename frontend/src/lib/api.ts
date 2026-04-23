@@ -28,7 +28,7 @@ function runtimeApiToken() {
   if (typeof window === "undefined") {
     return "";
   }
-  return window.sessionStorage.getItem(API_TOKEN_STORAGE_KEY) ?? "";
+  return window.localStorage.getItem(API_TOKEN_STORAGE_KEY) ?? "";
 }
 
 function activeApiToken() {
@@ -43,14 +43,14 @@ export function setApiToken(token: string) {
   if (typeof window === "undefined") {
     return;
   }
-  window.sessionStorage.setItem(API_TOKEN_STORAGE_KEY, token.trim());
+  window.localStorage.setItem(API_TOKEN_STORAGE_KEY, token.trim());
 }
 
 export function clearApiToken() {
   if (typeof window === "undefined") {
     return;
   }
-  window.sessionStorage.removeItem(API_TOKEN_STORAGE_KEY);
+  window.localStorage.removeItem(API_TOKEN_STORAGE_KEY);
 }
 
 export function apiUrl(path: string) {
