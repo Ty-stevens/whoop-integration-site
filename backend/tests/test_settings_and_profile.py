@@ -1,7 +1,10 @@
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
+from app.db.session import normalize_database_url
+from app.main import create_app
 from app.schemas.athlete_profile import AthleteProfile
 
 
@@ -50,6 +53,43 @@ def test_whoop_credentials_configured_rejects_replace_with_placeholders():
     )
 
     assert settings.whoop_credentials_configured is False
+
+
+def test_vercel_sqlite_database_is_reported_as_ephemeral(monkeypatch):
+    monkeypatch.setenv("VERCEL", "1")
+
+    settings = Settings(database_url="sqlite:///./data/endurasync.db")
+
+    assert settings.database_storage_status == "ephemeral"
+    assert "durable DATABASE_URL" in settings.database_storage_message
+
+
+def test_postgres_database_url_is_normalized_for_psycopg():
+    assert (
+        normalize_database_url("postgres://user:pass@example.com/db?sslmode=require")
+        == "postgresql+psycopg://user:pass@example.com/db?sslmode=require"
+    )
+    assert (
+        normalize_database_url("postgresql://user:pass@example.com/db")
+        == "postgresql+psycopg://user:pass@example.com/db"
+    )
+
+
+def test_vercel_sqlite_blocks_whoop_connect_with_actionable_message(monkeypatch):
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("WHOOP_CLIENT_ID", "client-id")
+    monkeypatch.setenv("WHOOP_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("APP_ENCRYPTION_KEY", "test-encryption-key")
+    get_settings.cache_clear()
+    test_client = TestClient(create_app())
+
+    status = test_client.get("/api/v1/integrations/whoop/status")
+    connect = test_client.get("/api/v1/integrations/whoop/connect/start")
+
+    assert status.status_code == 200
+    assert status.json()["status"] == "storage_misconfigured"
+    assert connect.status_code == 503
+    assert "durable DATABASE_URL" in connect.json()["detail"]
 
 
 def test_whoop_status_does_not_expose_secrets(client):

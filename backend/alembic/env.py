@@ -6,7 +6,7 @@ import app.models  # noqa: F401
 from alembic import context
 from app.core.config import get_settings
 from app.db.base import Base
-from app.db.session import initialize_database
+from app.db.session import initialize_database, normalize_database_url
 
 config = context.config
 
@@ -19,7 +19,7 @@ target_metadata = Base.metadata
 def get_url() -> str:
     database_url = get_settings().database_url
     initialize_database(database_url)
-    return database_url
+    return normalize_database_url(database_url)
 
 
 def run_migrations_offline() -> None:

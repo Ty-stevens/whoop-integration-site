@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -39,6 +39,8 @@ describe("SettingsPage", () => {
   });
 
   afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -128,5 +130,71 @@ describe("SettingsPage", () => {
     await user.click(await screen.findByRole("button", { name: "Connect WHOOP" }));
 
     await waitFor(() => expect(assign).toHaveBeenCalledWith(authorizationUrl));
+  });
+
+  it("disables WHOOP connect when production storage is ephemeral", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.endsWith("/api/v1/integrations/whoop/status")) {
+          return Promise.resolve(
+            Response.json({
+              status: "storage_misconfigured",
+              credentials_configured: true,
+              connected_at_utc: null,
+              last_token_refresh_at_utc: null,
+              token_expires_at_utc: null,
+              granted_scopes: null,
+              message:
+                "Vercel deployments need a durable DATABASE_URL such as Neon Postgres. SQLite is stored in ephemeral function storage and cannot retain WHOOP OAuth tokens or synced health data."
+            })
+          );
+        }
+        if (url.endsWith("/api/v1/athlete-profile")) {
+          return Promise.resolve(
+            Response.json({
+              display_name: null,
+              gender: null,
+              date_of_birth: null,
+              age_years: null,
+              height_cm: null,
+              weight_kg: null,
+              training_focus: null,
+              experience_level: null,
+              notes_for_ai: null,
+              ai_context_allowed: true
+            })
+          );
+        }
+        if (url.endsWith("/api/v1/settings")) {
+          return Promise.resolve(
+            Response.json({
+              auto_sync_enabled: false,
+              auto_sync_frequency: "daily",
+              preferred_export_format: "csv",
+              preferred_units: "metric"
+            })
+          );
+        }
+        if (url.endsWith("/api/v1/ai/status")) {
+          return Promise.resolve(
+            Response.json({
+              status: "disabled",
+              provider: "disabled",
+              enabled: false,
+              model: null,
+              message: "AI is disabled."
+            })
+          );
+        }
+        return Promise.reject(new Error(`Unexpected URL ${url}`));
+      })
+    );
+
+    renderWithQueryClient(<SettingsPage />);
+
+    expect(await screen.findByText("storage misconfigured")).toBeInTheDocument();
+    expect(screen.getByText(/durable DATABASE_URL/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connect WHOOP" })).toBeDisabled();
   });
 });

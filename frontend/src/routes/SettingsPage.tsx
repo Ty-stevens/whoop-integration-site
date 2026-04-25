@@ -11,6 +11,7 @@ import { SectionShell } from "../components/ui/SectionShell";
 import {
   apiFetch,
   apiOpenRedirect,
+  isApiError,
   isApiOfflineError,
   isApiUnauthorizedError,
   type AiStatus,
@@ -68,6 +69,25 @@ function queryErrorMessage(error: unknown, unavailableMessage: string) {
   }
   if (isApiOfflineError(error)) {
     return "Backend is offline. Start the API on port 8000, then retry.";
+  }
+  return unavailableMessage;
+}
+
+function mutationErrorMessage(error: unknown, unavailableMessage: string) {
+  if (isApiUnauthorizedError(error)) {
+    return "API access is locked. Use the API token, then reload this page.";
+  }
+  if (isApiOfflineError(error)) {
+    return "Backend is offline. Start the API on port 8000, then retry.";
+  }
+  if (isApiError(error)) {
+    const details = error.details;
+    if (details && typeof details === "object" && "detail" in details) {
+      const detail = details.detail;
+      if (typeof detail === "string") {
+        return detail;
+      }
+    }
   }
   return unavailableMessage;
 }
@@ -157,6 +177,10 @@ export function SettingsPage() {
 
   const profileUnavailable = !profileQuery.data;
   const settingsUnavailable = !settingsQuery.data;
+  const whoopConnectUnavailable =
+    !whoopQuery.data ||
+    whoopQuery.data.status === "config_missing" ||
+    whoopQuery.data.status === "storage_misconfigured";
 
   return (
     <>
@@ -174,45 +198,55 @@ export function SettingsPage() {
             />
           ) : null}
           {whoopQuery.data ? (
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-lg font-semibold">{whoopQuery.data.status.replace("_", " ")}</p>
-                <p className="mt-1 text-sm text-muted">{whoopQuery.data.message}</p>
-                {whoopQuery.data.connected_at_utc ? (
-                  <p className="mt-2 text-xs text-muted">
-                    Connected {new Date(whoopQuery.data.connected_at_utc).toLocaleString()}
-                  </p>
-                ) : null}
-                {whoopQuery.data.token_expires_at_utc ? (
-                  <p className="mt-1 text-xs text-muted">
-                    Token expires {new Date(whoopQuery.data.token_expires_at_utc).toLocaleString()}
-                  </p>
-                ) : null}
-                {whoopQuery.data.granted_scopes ? (
-                  <p className="mt-1 text-xs text-muted">Scopes {whoopQuery.data.granted_scopes}</p>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  disabled={connectWhoop.isPending}
-                  onClick={() => connectWhoop.mutate()}
-                >
-                  {connectWhoop.isPending
-                    ? "Opening WHOOP..."
-                    : whoopQuery.data.status === "connected"
-                      ? "Reconnect WHOOP"
-                      : "Connect WHOOP"}
-                </Button>
-                {whoopQuery.data.status === "connected" || whoopQuery.data.status === "expired" ? (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-lg font-semibold">{whoopQuery.data.status.replace("_", " ")}</p>
+                  <p className="mt-1 text-sm text-muted">{whoopQuery.data.message}</p>
+                  {whoopQuery.data.connected_at_utc ? (
+                    <p className="mt-2 text-xs text-muted">
+                      Connected {new Date(whoopQuery.data.connected_at_utc).toLocaleString()}
+                    </p>
+                  ) : null}
+                  {whoopQuery.data.token_expires_at_utc ? (
+                    <p className="mt-1 text-xs text-muted">
+                      Token expires {new Date(whoopQuery.data.token_expires_at_utc).toLocaleString()}
+                    </p>
+                  ) : null}
+                  {whoopQuery.data.granted_scopes ? (
+                    <p className="mt-1 text-xs text-muted">Scopes {whoopQuery.data.granted_scopes}</p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
                   <Button
-                    variant="secondary"
-                    disabled={disconnectWhoop.isPending}
-                    onClick={() => disconnectWhoop.mutate()}
+                    disabled={connectWhoop.isPending || whoopConnectUnavailable}
+                    onClick={() => connectWhoop.mutate()}
                   >
-                    Disconnect
+                    {connectWhoop.isPending
+                      ? "Opening WHOOP..."
+                      : whoopQuery.data.status === "connected"
+                        ? "Reconnect WHOOP"
+                        : "Connect WHOOP"}
                   </Button>
-                ) : null}
+                  {whoopQuery.data.status === "connected" || whoopQuery.data.status === "expired" ? (
+                    <Button
+                      variant="secondary"
+                      disabled={disconnectWhoop.isPending}
+                      onClick={() => disconnectWhoop.mutate()}
+                    >
+                      Disconnect
+                    </Button>
+                  ) : null}
+                </div>
               </div>
+              {connectWhoop.isError ? (
+                <ErrorState
+                  message={mutationErrorMessage(
+                    connectWhoop.error,
+                    "WHOOP connection could not start. Check backend configuration and retry."
+                  )}
+                />
+              ) : null}
             </div>
           ) : null}
         </Card>

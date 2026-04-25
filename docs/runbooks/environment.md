@@ -6,6 +6,13 @@ Do not commit real secrets.
 
 Development can boot with placeholder WHOOP credentials. Production must provide real secrets for encryption and OAuth before connection work is used.
 
+Vercel production must also use durable database storage. Do not use the default
+SQLite `DATABASE_URL` on Vercel: function storage is ephemeral, so OAuth states,
+WHOOP tokens, synced metrics, reports, and benchmarks can disappear between
+requests. Use a managed Postgres database such as Neon and set `DATABASE_URL` to
+its Postgres connection string. The backend accepts standard `postgres://` or
+`postgresql://` URLs and normalizes them for SQLAlchemy.
+
 AI defaults to disabled:
 
 ```bash

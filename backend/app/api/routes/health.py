@@ -15,6 +15,8 @@ def health_payload() -> dict[str, str | bool]:
         "environment": settings.app_env,
         "version": settings.app_version,
         "database": check_database(),
+        "database_storage": settings.database_storage_status,
+        "database_storage_message": settings.database_storage_message,
         "api_auth_required": settings.api_auth_enabled,
     }
 

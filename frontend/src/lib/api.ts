@@ -127,11 +127,19 @@ export type HealthResponse = {
   environment: string;
   version: string;
   database: boolean;
+  database_storage: "durable" | "ephemeral";
+  database_storage_message: string;
   api_auth_required: boolean;
 };
 
 export type WhoopStatus = {
-  status: "disconnected" | "connected" | "expired" | "error" | "config_missing";
+  status:
+    | "disconnected"
+    | "connected"
+    | "expired"
+    | "error"
+    | "config_missing"
+    | "storage_misconfigured";
   credentials_configured: boolean;
   connected_at_utc: string | null;
   last_token_refresh_at_utc: string | null;

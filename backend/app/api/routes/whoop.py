@@ -50,6 +50,8 @@ def whoop_connect(
     _: None = Depends(require_api_auth),
 ):
     settings = get_settings()
+    if settings.database_is_ephemeral:
+        raise HTTPException(status_code=503, detail=settings.database_storage_message)
     if not settings.whoop_credentials_configured:
         return WhoopStatus(
             status="config_missing",
@@ -70,6 +72,8 @@ def whoop_connect_start(
     _: None = Depends(require_api_auth),
 ) -> WhoopConnectStart:
     settings = get_settings()
+    if settings.database_is_ephemeral:
+        raise HTTPException(status_code=503, detail=settings.database_storage_message)
     if not settings.whoop_credentials_configured:
         raise HTTPException(
             status_code=503,
@@ -91,6 +95,9 @@ def whoop_callback(
     code: str | None = None,
     state: str | None = None,
 ) -> RedirectResponse:
+    settings = get_settings()
+    if settings.database_is_ephemeral:
+        raise HTTPException(status_code=503, detail=settings.database_storage_message)
     if not code or not state:
         raise HTTPException(status_code=400, detail="WHOOP callback requires code and state")
     try:
@@ -100,7 +107,7 @@ def whoop_callback(
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     frontend_base_url = _trim_backend_prefix(
-        _frontend_redirect_base(request, settings=get_settings())
+        _frontend_redirect_base(request, settings=settings)
     )
     return RedirectResponse(f"{frontend_base_url}/settings?whoop=connected")
 

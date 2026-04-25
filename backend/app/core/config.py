@@ -114,6 +114,24 @@ class Settings(BaseSettings):
         return not _is_placeholder_secret(self.api_auth_token)
 
     @property
+    def database_is_ephemeral(self) -> bool:
+        return bool(os.getenv("VERCEL")) and self.database_url.startswith("sqlite:")
+
+    @property
+    def database_storage_status(self) -> Literal["durable", "ephemeral"]:
+        return "ephemeral" if self.database_is_ephemeral else "durable"
+
+    @property
+    def database_storage_message(self) -> str:
+        if self.database_is_ephemeral:
+            return (
+                "Vercel deployments need a durable DATABASE_URL such as Neon Postgres. "
+                "SQLite is stored in ephemeral function storage and cannot retain WHOOP "
+                "OAuth tokens or synced health data."
+            )
+        return "Database storage is durable for this runtime."
+
+    @property
     def whoop_credentials_configured(self) -> bool:
         return not _is_placeholder_secret(self.whoop_client_id) and not _is_placeholder_secret(
             self.whoop_client_secret

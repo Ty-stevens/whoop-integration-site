@@ -11,6 +11,7 @@ class WhoopStatus(BaseModel):
         "expired",
         "error",
         "config_missing",
+        "storage_misconfigured",
     ] = "disconnected"
     credentials_configured: bool
     connected_at_utc: datetime | None = None

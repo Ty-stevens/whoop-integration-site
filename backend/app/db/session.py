@@ -28,6 +28,14 @@ def initialize_database(database_url: str | None = None) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
 
+def normalize_database_url(database_url: str) -> str:
+    if database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+psycopg://", 1)
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return database_url
+
+
 def _vercel_sqlite_fallback(database_url: str) -> str:
     if not os.getenv("VERCEL"):
         return database_url
@@ -48,7 +56,7 @@ def _vercel_sqlite_fallback(database_url: str) -> str:
 
 
 def create_engine_for_url(database_url: str) -> Engine:
-    normalized_url = _vercel_sqlite_fallback(database_url)
+    normalized_url = normalize_database_url(_vercel_sqlite_fallback(database_url))
     try:
         initialize_database(normalized_url)
     except OSError:
@@ -75,9 +83,9 @@ def create_engine_for_url(database_url: str) -> Engine:
             finally:
                 cursor.close()
 
-        # Vercel-backed SQLite databases are ephemeral and start empty.
-        # Ensure the application schema exists before any route touches the DB.
-        Base.metadata.create_all(bind=engine)
+    # Serverless deployments and fresh local installs start with empty databases.
+    # Ensure the application schema exists before any route touches the DB.
+    Base.metadata.create_all(bind=engine)
 
     return engine
 

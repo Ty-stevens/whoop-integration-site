@@ -31,6 +31,13 @@ class WhoopAuthService:
         self.oauth_client = oauth_client or WhoopOAuthClient(self.settings)
 
     def status(self) -> WhoopStatus:
+        if self.settings.database_is_ephemeral:
+            return WhoopStatus(
+                status="storage_misconfigured",
+                credentials_configured=self.settings.whoop_credentials_configured,
+                message=self.settings.database_storage_message,
+            )
+
         if not self.settings.whoop_credentials_configured:
             return WhoopStatus(
                 status="config_missing",
