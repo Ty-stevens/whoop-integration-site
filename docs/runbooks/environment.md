@@ -13,6 +13,19 @@ AI_ENABLED=false
 AI_PROVIDER=disabled
 ```
 
-AI provider keys must remain server-side and must not be exposed to frontend code.
+OpenAI-compatible AI can be enabled server-side with either the generic AI variables or
+the OpenAI aliases:
+
+```bash
+AI_ENABLED=true
+AI_PROVIDER=openai_compatible
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=<model>
+OPENAI_API_KEY=<server-side key>
+```
+
+AI provider keys must remain server-side and must not be exposed to frontend code. If AI
+is enabled but these values are incomplete, the app reports a setup error from `/api/v1/ai/status`
+without blocking WHOOP sync, health, or dashboard routes.
 
 For the private deployment, use `deploy/env.example` as the shape reference and keep the live values in `deploy/env.local` on the host.

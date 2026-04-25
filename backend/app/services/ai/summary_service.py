@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
@@ -15,6 +16,8 @@ from app.services.ai.prompts import goal_suggestions_prompt, weekly_summary_prom
 from app.services.ai.provider import provider_from_settings
 from app.services.ai.types import AiProviderError
 
+logger = logging.getLogger("endurasync.ai.summary")
+
 
 class AiSummaryService:
     def __init__(self, db: Session) -> None:
@@ -29,10 +32,17 @@ class AiSummaryService:
                 generated_at_utc=generated_at,
                 message="AI is disabled.",
             )
+        if self.settings.ai_setup_error:
+            return AiWeeklySummaryResponse(
+                status="error",
+                generated_at_utc=generated_at,
+                message=self.settings.ai_setup_error,
+            )
         try:
             context = AiContextBuilder(self.db).build()
             result = provider_from_settings(self.settings).generate(weekly_summary_prompt(context))
         except AiProviderError:
+            logger.warning("ai.summary.weekly_unavailable")
             return AiWeeklySummaryResponse(
                 status="error",
                 generated_at_utc=generated_at,
@@ -57,10 +67,17 @@ class AiSummaryService:
                 generated_at_utc=generated_at,
                 message="AI is disabled.",
             )
+        if self.settings.ai_setup_error:
+            return AiGoalSuggestionsResponse(
+                status="error",
+                generated_at_utc=generated_at,
+                message=self.settings.ai_setup_error,
+            )
         try:
             context = AiContextBuilder(self.db).build()
             provider_from_settings(self.settings).generate(goal_suggestions_prompt(context))
         except AiProviderError:
+            logger.warning("ai.summary.goal_suggestions_unavailable")
             return AiGoalSuggestionsResponse(
                 status="error",
                 generated_at_utc=generated_at,

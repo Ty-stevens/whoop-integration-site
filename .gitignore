@@ -1,6 +1,11 @@
 .DS_Store
 .env
 .env.local
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 deploy/env.local
 .venv/
 __pycache__/
@@ -8,6 +13,15 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.kdbx
+*.ovpn
 backend/data/
 backend/.coverage
 backend/htmlcov/
@@ -19,3 +33,4 @@ frontend/coverage/
 *.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
+.vercel

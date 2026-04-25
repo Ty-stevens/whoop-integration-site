@@ -21,7 +21,9 @@ class AiContextBuilder:
         current_week = CurrentWeekMetricsService(self.db).build(iso_week_start(date.today()))
         today = date.today()
         report = SixMonthReportMetricsService(self.db).build(today)
-        goals = GoalRepository(self.db).history()[:5]
+        goal_repository = GoalRepository(self.db)
+        goals = goal_repository.history()[:5]
+        active_goal = goal_repository.active_for_week(iso_week_start(today))
         sync_states = SyncRepository(self.db).get_states()
         profile = self.db.query(AthleteProfileModel).one_or_none()
 
@@ -71,18 +73,10 @@ class AiContextBuilder:
                 "consistency": report.consistency_summary.__dict__,
             },
             "recent_goals": [
-                {
-                    "effective_from_date": goal.effective_from_date.isoformat(),
-                    "zone1_target_minutes": goal.zone1_target_minutes,
-                    "zone2_target_minutes": goal.zone2_target_minutes,
-                    "zone3_target_minutes": goal.zone3_target_minutes,
-                    "zone4_target_minutes": goal.zone4_target_minutes,
-                    "zone5_target_minutes": goal.zone5_target_minutes,
-                    "cardio_sessions_target": goal.cardio_sessions_target,
-                    "strength_sessions_target": goal.strength_sessions_target,
-                }
+                _goal_context(goal)
                 for goal in goals
             ],
+            "active_benchmark": _goal_context(active_goal) if active_goal else None,
             "athlete_profile": _profile_context(profile) if profile else None,
         }
 
@@ -94,4 +88,24 @@ def _profile_context(profile: AthleteProfileModel) -> dict:
         "training_focus": profile.training_focus,
         "experience_level": profile.experience_level,
         "notes_for_ai": profile.notes_for_ai,
+    }
+
+
+def _goal_context(goal) -> dict:
+    return {
+        "id": goal.id,
+        "effective_from_date": goal.effective_from_date.isoformat(),
+        "effective_to_date": goal.effective_to_date.isoformat()
+        if goal.effective_to_date is not None
+        else None,
+        "zone1_target_minutes": goal.zone1_target_minutes,
+        "zone2_target_minutes": goal.zone2_target_minutes,
+        "zone3_target_minutes": goal.zone3_target_minutes,
+        "zone4_target_minutes": goal.zone4_target_minutes,
+        "zone5_target_minutes": goal.zone5_target_minutes,
+        "cardio_sessions_target": goal.cardio_sessions_target,
+        "strength_sessions_target": goal.strength_sessions_target,
+        "created_source": goal.created_source,
+        "created_reason": goal.created_reason,
+        "ai_provenance": goal.ai_provenance_json,
     }

@@ -1,4 +1,6 @@
+import logging
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from sqlalchemy.orm import Session
@@ -18,6 +20,8 @@ from app.services.whoop.provider_client import WhoopProviderClient
 from app.services.whoop.token_store import WhoopTokenStore
 
 RunResourceType = Literal["workouts", "sleeps", "recoveries", "all"]
+STALE_RUNNING_AFTER = timedelta(hours=2)
+logger = logging.getLogger("endurasync.sync")
 
 
 class SyncAlreadyRunningError(RuntimeError):
@@ -88,6 +92,7 @@ def build_sync_status(
 ) -> SyncStatus:
     settings = settings or get_settings()
     repository = SyncRepository(db)
+    _clear_stale_running_runs(repository)
     latest_running = repository.get_latest_running_run()
     latest_run = latest_running or repository.get_latest_run()
     states = repository.get_states()
@@ -127,8 +132,19 @@ def build_sync_status(
 
 
 def _raise_if_running(db: Session) -> None:
-    if SyncRepository(db).get_latest_running_run() is not None:
+    repository = SyncRepository(db)
+    _clear_stale_running_runs(repository)
+    if repository.get_latest_running_run() is not None:
         raise SyncAlreadyRunningError("A sync run is already in progress.")
+
+
+def _clear_stale_running_runs(repository: SyncRepository) -> None:
+    count = repository.mark_stale_running_runs_failed(
+        cutoff_utc=datetime.now(UTC) - STALE_RUNNING_AFTER,
+        error_message="Sync run was marked failed after becoming stale.",
+    )
+    if count:
+        logger.warning("sync.stale_running_marked_failed count=%s", count)
 
 
 def _run_summary(row) -> SyncRunSummary | None:

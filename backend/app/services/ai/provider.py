@@ -3,12 +3,17 @@ from abc import ABC, abstractmethod
 from app.core.config import Settings
 from app.services.ai.providers.disabled import DisabledAiProvider
 from app.services.ai.providers.openai_compatible import OpenAiCompatibleProvider
-from app.services.ai.types import AiProviderResult
+from app.services.ai.types import AiProviderResult, AiResponseFormat
 
 
 class AiProvider(ABC):
     @abstractmethod
-    def generate(self, prompt: str) -> AiProviderResult:
+    def generate(
+        self,
+        prompt: str,
+        *,
+        response_format: AiResponseFormat | None = None,
+    ) -> AiProviderResult:
         raise NotImplementedError
 
 

@@ -10,6 +10,7 @@ export class ApiError extends Error {
 }
 
 const API_TOKEN_STORAGE_KEY = "endurasync_api_token";
+export const API_AUTH_INVALID_EVENT = "endurasync:api-auth-invalid";
 
 function defaultApiBaseUrl() {
   if (import.meta.env.VITE_API_BASE_URL) {
@@ -32,7 +33,7 @@ function runtimeApiToken() {
 }
 
 function activeApiToken() {
-  return runtimeApiToken() || (import.meta.env.VITE_API_AUTH_TOKEN ?? "");
+  return runtimeApiToken();
 }
 
 export function hasApiToken() {
@@ -80,6 +81,10 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const body = isJson ? await response.json() : await response.text();
 
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      clearApiToken();
+      window.dispatchEvent(new window.CustomEvent(API_AUTH_INVALID_EVENT));
+    }
     throw new ApiError("Request failed", response.status, body);
   }
 
@@ -105,6 +110,18 @@ export async function apiOpenRedirect(path: string): Promise<void> {
   const contentType = response.headers.get("content-type") ?? "";
   const details = contentType.includes("application/json") ? await response.json() : await response.text();
   throw new ApiError("WHOOP connect request failed", response.status, details);
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
+export function isApiUnauthorizedError(error: unknown) {
+  return isApiError(error) && error.status === 401;
+}
+
+export function isApiOfflineError(error: unknown) {
+  return !isApiError(error) && error instanceof Error;
 }
 
 export type HealthResponse = {
@@ -233,6 +250,8 @@ export type GoalProfile = {
   cardio_sessions_target: number;
   strength_sessions_target: number;
   created_reason: string | null;
+  created_source: string;
+  ai_provenance_json: Record<string, unknown> | null;
   created_at_utc: string;
 };
 
@@ -421,6 +440,54 @@ export type AiGoalSuggestion = GoalProfileCreateInput & {
 export type AiGoalSuggestionsResponse = {
   status: "disabled" | "success" | "error";
   suggestions: AiGoalSuggestion[];
+  generated_at_utc: string;
+  message: string;
+};
+
+export type AiBenchmarkSourceRef = {
+  source_type: string;
+  date: string | null;
+  metric: string;
+  value: string | number | null;
+};
+
+export type AiBenchmarkChange = {
+  metric:
+    | "zone1_target_minutes"
+    | "zone2_target_minutes"
+    | "zone3_target_minutes"
+    | "zone4_target_minutes"
+    | "zone5_target_minutes"
+    | "cardio_sessions_target"
+    | "strength_sessions_target";
+  current_value: number;
+  recommended_value: number;
+  reason: string;
+  sources: AiBenchmarkSourceRef[];
+};
+
+export type AiBenchmarkTargets = {
+  zone1_target_minutes: number;
+  zone2_target_minutes: number;
+  zone3_target_minutes: number;
+  zone4_target_minutes: number;
+  zone5_target_minutes: number;
+  cardio_sessions_target: number;
+  strength_sessions_target: number;
+};
+
+export type AiBenchmarkProposal = {
+  targets: AiBenchmarkTargets;
+  summary: string;
+  confidence: "low" | "medium" | "high";
+  changes: AiBenchmarkChange[];
+};
+
+export type AiBenchmarkUpdateResponse = {
+  status: "disabled" | "setup_error" | "success" | "error";
+  applied: boolean;
+  proposal: AiBenchmarkProposal | null;
+  profile: GoalProfile | null;
   generated_at_utc: string;
   message: string;
 };

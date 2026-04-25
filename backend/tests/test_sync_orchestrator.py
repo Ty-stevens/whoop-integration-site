@@ -241,7 +241,9 @@ def test_single_malformed_record_marks_partial_persists_good_records_and_leaves_
     assert outcome.status == "partial"
     assert outcome.counts.inserted == 1
     assert outcome.counts.failed == 1
-    assert state is None
+    assert state is not None
+    assert state.last_successful_sync_at_utc is None
+    assert ensure_utc(state.last_window_end_utc) == NOW
     assert workout_count == 1
     assert run is not None
     assert run.status == "partial"

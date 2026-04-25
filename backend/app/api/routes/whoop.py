@@ -2,12 +2,38 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from app.api.deps import DbSession, require_api_auth
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.schemas.whoop import WhoopConnectUnavailable, WhoopStatus
 from app.services.whoop.auth_service import WhoopAuthService
 from app.services.whoop.oauth import OAuthStateError
 
 router = APIRouter()
+
+
+def _frontend_redirect_base(request: Request, settings: Settings) -> str:
+    if settings.app_env == "development":
+        return settings.frontend_dev_url.rstrip("/")
+
+    app_base = settings.app_base_url.strip() if settings.app_base_url else ""
+    if app_base:
+        return app_base.rstrip("/")
+
+    forwarded_host = request.headers.get("x-forwarded-host")
+    if forwarded_host:
+        host = forwarded_host.split(",", 1)[0].strip()
+    else:
+        host = request.headers.get("host") or request.url.hostname or ""
+
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    return f"{scheme}://{host}".rstrip("/")
+
+
+def _trim_backend_prefix(frontend_base_url: str) -> str:
+    """Remove service prefixes so we always redirect to the Vite app root."""
+    for suffix in ("/backend", "/backend/"):
+        if frontend_base_url.endswith(suffix):
+            return frontend_base_url[: -len(suffix)].rstrip("/")
+    return frontend_base_url
 
 
 @router.get("/status", response_model=WhoopStatus)
@@ -53,11 +79,9 @@ def whoop_callback(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    settings = get_settings()
-    if settings.app_env == "development":
-        frontend_base_url = settings.frontend_dev_url.rstrip("/")
-    else:
-        frontend_base_url = str(request.base_url).rstrip("/")
+    frontend_base_url = _trim_backend_prefix(
+        _frontend_redirect_base(request, settings=get_settings())
+    )
     return RedirectResponse(f"{frontend_base_url}/settings?whoop=connected")
 
 

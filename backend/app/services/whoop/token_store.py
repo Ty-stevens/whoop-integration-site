@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
@@ -8,6 +9,8 @@ from app.core.security import decrypt_secret, encrypt_secret
 from app.core.time import ensure_utc
 from app.models.whoop_connection import WhoopConnectionModel
 from app.services.whoop.models import StoredWhoopTokens, WhoopTokenResponse
+
+logger = logging.getLogger("endurasync.whoop.tokens")
 
 
 class WhoopTokenRefreshError(RuntimeError):
@@ -32,6 +35,34 @@ class WhoopTokenStore:
         connection = self.get_connection()
         if connection is None:
             connection = WhoopConnectionModel()
+            existing_refresh_token_encrypted = None
+            is_new_connection = True
+        else:
+            existing_refresh_token_encrypted = connection.refresh_token_encrypted
+            is_new_connection = False
+
+        if token_response.refresh_token is None:
+            if refreshed and existing_refresh_token_encrypted:
+                refresh_token_encrypted = existing_refresh_token_encrypted
+                logger.info("whoop.tokens.refresh_token_reused")
+            else:
+                if is_new_connection:
+                    self.db.rollback()
+                else:
+                    connection.status = "error"
+                    connection.updated_at_utc = now
+                    self.db.commit()
+                logger.warning("whoop.tokens.missing_refresh_token refreshed=%s", refreshed)
+                raise WhoopTokenRefreshError(
+                    "WHOOP token response did not include a refresh token; reconnect WHOOP"
+                )
+        else:
+            refresh_token_encrypted = encrypt_secret(
+                token_response.refresh_token,
+                self.settings.app_encryption_key,
+            )
+
+        if is_new_connection:
             self.db.add(connection)
 
         if token_response.whoop_user_id is not None:
@@ -41,10 +72,7 @@ class WhoopTokenStore:
             token_response.access_token,
             self.settings.app_encryption_key,
         )
-        connection.refresh_token_encrypted = encrypt_secret(
-            token_response.refresh_token,
-            self.settings.app_encryption_key,
-        )
+        connection.refresh_token_encrypted = refresh_token_encrypted
         connection.token_expires_at_utc = now + timedelta(seconds=token_response.expires_in)
         connection.granted_scopes = token_response.scope
         connection.connected_at_utc = connection.connected_at_utc or now
@@ -53,6 +81,13 @@ class WhoopTokenStore:
         connection.updated_at_utc = now
         self.db.commit()
         self.db.refresh(connection)
+        logger.info(
+            "whoop.tokens.saved refreshed=%s expires_at=%s scope_present=%s user_id_present=%s",
+            refreshed,
+            connection.token_expires_at_utc.isoformat(),
+            connection.granted_scopes is not None,
+            connection.whoop_user_id is not None,
+        )
         return connection
 
     def mark_error(self) -> None:
@@ -62,6 +97,7 @@ class WhoopTokenStore:
         connection.status = "error"
         connection.updated_at_utc = datetime.now(UTC)
         self.db.commit()
+        logger.warning("whoop.tokens.connection_marked_error")
 
     def refresh_if_needed(
         self,
@@ -92,14 +128,20 @@ class WhoopTokenStore:
         tokens = tokens or self.get_decrypted_tokens()
         if tokens is None:
             return None
+        if not tokens.refresh_token:
+            self.mark_error()
+            raise WhoopTokenRefreshError("WHOOP refresh token is missing; reconnect WHOOP")
 
         try:
+            logger.info("whoop.tokens.refresh.start")
             token_response = oauth_client.refresh_tokens(tokens.refresh_token)
         except Exception as exc:
             self.mark_error()
+            logger.warning("whoop.tokens.refresh.failed error_type=%s", exc.__class__.__name__)
             raise WhoopTokenRefreshError("WHOOP token refresh failed") from exc
 
         self.save_token_response(token_response, refreshed=True)
+        logger.info("whoop.tokens.refresh.success")
         return self.get_decrypted_tokens()
 
     def get_decrypted_tokens(self) -> StoredWhoopTokens | None:

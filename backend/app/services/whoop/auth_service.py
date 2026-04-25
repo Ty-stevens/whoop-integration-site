@@ -1,19 +1,21 @@
+import logging
 from datetime import UTC, datetime
 
-import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.time import ensure_utc
 from app.schemas.whoop import WhoopStatus
-from app.services.whoop.client import WhoopOAuthClient
+from app.services.whoop.client import WhoopOAuthClient, WhoopOAuthError
 from app.services.whoop.models import WhoopTokenResponse
 from app.services.whoop.oauth import (
     build_authorization_url,
     consume_oauth_state,
     create_oauth_state,
 )
-from app.services.whoop.token_store import WhoopTokenStore
+from app.services.whoop.token_store import WhoopTokenRefreshError, WhoopTokenStore
+
+logger = logging.getLogger("endurasync.whoop.auth")
 
 
 class WhoopAuthService:
@@ -45,13 +47,25 @@ class WhoopAuthService:
             )
 
         expires_at = ensure_utc(connection.token_expires_at_utc)
-        status = "expired" if expires_at <= datetime.now(UTC) else connection.status
+        missing_refresh_token = not connection.refresh_token_encrypted
+        if missing_refresh_token:
+            status = "error"
+        else:
+            status = "expired" if expires_at <= datetime.now(UTC) else connection.status
         if status == "expired":
-            message = "WHOOP connection token has expired."
+            message = "WHOOP access token is expired and will refresh on the next sync."
+        elif status == "error" and missing_refresh_token:
+            message = "WHOOP connection is missing refresh access. Reconnect WHOOP."
         elif status == "error":
             message = "WHOOP connection needs attention after a token refresh failure."
         else:
             message = "WHOOP connection is stored securely."
+        logger.info(
+            "whoop.auth.status status=%s credentials_configured=%s connected=%s",
+            status,
+            True,
+            connection is not None,
+        )
         return WhoopStatus(
             status=status,  # type: ignore[arg-type]
             credentials_configured=True,
@@ -66,15 +80,19 @@ class WhoopAuthService:
         if not self.settings.whoop_credentials_configured:
             return None
         state = create_oauth_state(self.db)
+        logger.info("whoop.auth.authorization_url_created")
         return build_authorization_url(self.settings, state)
 
     def handle_callback(self, code: str, state: str) -> None:
+        logger.info("whoop.auth.callback.start")
         consume_oauth_state(self.db, state)
         try:
             token_response = self.oauth_client.exchange_code_for_tokens(code)
-        except httpx.HTTPError as exc:
+            self.token_store.save_token_response(token_response)
+        except (WhoopOAuthError, WhoopTokenRefreshError) as exc:
+            logger.warning("whoop.auth.callback.failed error_type=%s", exc.__class__.__name__)
             raise RuntimeError("WHOOP token exchange failed") from exc
-        self.token_store.save_token_response(token_response)
+        logger.info("whoop.auth.callback.success")
 
     def save_mocked_tokens_for_test(self, token_response: WhoopTokenResponse) -> None:
         self.token_store.save_token_response(token_response)

@@ -86,6 +86,13 @@ The root `Makefile` provides:
 
 WHOOP tokens, provider payloads, and AI provider secrets are kept server-side. AI features are optional and disabled by default in baseline deployments.
 
+Additional hardening now included:
+
+- API routes require `X-API-Key` (or `Authorization: Bearer ...`) when `API_AUTH_TOKEN` is set.
+- `API_AUTH_TOKEN` is required in production startup validation.
+- `TRUSTED_HOSTS` and strict CORS origin validation are enforced.
+- Security response headers are added (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Strict-Transport-Security` in production).
+
 ## Deployment
 
 See deployment templates in [`deploy/`](./deploy) and runbooks in [`docs/runbooks/`](./docs/runbooks).

@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -19,6 +20,7 @@ SyncTrigger = Literal["initial_backfill", "manual", "scheduled"]
 BACKFILL_DAYS = 180
 OVERLAP_DAYS = 3
 TOKEN_SAFE_ERROR_LIMIT = 240
+logger = logging.getLogger("endurasync.sync")
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,14 @@ class SyncOrchestrator:
             window_start_utc=window_start,
             window_end_utc=window_end,
         )
+        logger.info(
+            "sync.resource.start run_id=%s resource=%s trigger=%s window_start=%s window_end=%s",
+            run.id,
+            resource_type,
+            trigger,
+            window_start.isoformat(),
+            window_end.isoformat(),
+        )
 
         counts = {"inserted": 0, "updated": 0, "unchanged": 0, "failed": 0}
         error_messages: list[str] = []
@@ -99,6 +109,12 @@ class SyncOrchestrator:
         except Exception as exc:
             message = _token_safe_error_message(exc)
             self.sync_repository.finish_run(run, status="failed", error_message=message)
+            logger.warning(
+                "sync.resource.fetch_failed run_id=%s resource=%s error=%s",
+                run.id,
+                resource_type,
+                message,
+            )
             return SyncOutcome(
                 run_id=run.id,
                 resource_type=resource_type,
@@ -112,6 +128,12 @@ class SyncOrchestrator:
 
         repository = spec.repository_type(self.db)
         for page in pages:
+            if page.invalid_record_errors:
+                counts["failed"] += len(page.invalid_record_errors)
+                error_messages.extend(
+                    _token_safe_error_message(ValueError(error))
+                    for error in page.invalid_record_errors
+                )
             for index, provider_record in enumerate(page.parsed.records):
                 try:
                     raw_record = self._raw_record_at(page, index)
@@ -131,6 +153,7 @@ class SyncOrchestrator:
                     counts["unchanged"] += 1
 
         status = "partial" if counts["failed"] else "success"
+        successful_records = counts["inserted"] + counts["updated"] + counts["unchanged"]
         error_message = "; ".join(error_messages[:3]) if error_messages else None
         if error_message is not None:
             error_message = error_message[:TOKEN_SAFE_ERROR_LIMIT]
@@ -145,14 +168,32 @@ class SyncOrchestrator:
             error_message=error_message,
         )
 
-        if status == "success":
+        if status == "success" or successful_records > 0:
+            previous_state = self.sync_repository.get_state(resource_type)
             self.sync_repository.upsert_state(
                 resource_type=resource_type,
-                last_successful_sync_at_utc=window_end,
+                last_successful_sync_at_utc=window_end
+                if status == "success"
+                else (
+                    previous_state.last_successful_sync_at_utc
+                    if previous_state is not None
+                    else None
+                ),
                 last_window_start_utc=window_start,
                 last_window_end_utc=window_end,
                 cursor_text=None,
             )
+        logger.info(
+            "sync.resource.finish run_id=%s resource=%s status=%s "
+            "inserted=%s updated=%s unchanged=%s failed=%s",
+            run.id,
+            resource_type,
+            status,
+            counts["inserted"],
+            counts["updated"],
+            counts["unchanged"],
+            counts["failed"],
+        )
 
         return SyncOutcome(
             run_id=run.id,

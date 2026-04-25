@@ -33,6 +33,8 @@ class GoalProfileCreate(GoalProfileBase):
 
 class GoalProfileResponse(GoalProfileBase):
     id: int
+    created_source: str = "manual"
+    ai_provenance_json: dict | None = None
     created_at_utc: datetime
 
     model_config = {"from_attributes": True}

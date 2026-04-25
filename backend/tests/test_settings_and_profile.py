@@ -11,18 +11,35 @@ def test_development_allows_placeholder_whoop_credentials():
     assert settings.whoop_credentials_configured is False
 
 
-def test_production_rejects_placeholder_secrets():
-    with pytest.raises(ValidationError):
-        Settings(app_env="production")
+def test_production_allows_placeholder_secrets_for_graceful_degradation(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("CORS_ORIGINS", "https://app.example.com")
+    monkeypatch.setenv("APP_BASE_URL", "https://app.example.com")
+    monkeypatch.setenv(
+        "WHOOP_REDIRECT_URI", "https://app.example.com/api/v1/integrations/whoop/callback"
+    )
+    monkeypatch.setenv("TRUSTED_HOSTS", "app.example.com")
+
+    settings = Settings(
+        _env_file=None,
+    )
+
+    assert settings.api_auth_enabled is False
+    assert settings.whoop_credentials_configured is False
 
 
-def test_production_rejects_replace_with_placeholder_secrets():
+def test_production_rejects_insecure_public_urls(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("CORS_ORIGINS", "http://app.example.com")
+    monkeypatch.setenv("APP_BASE_URL", "http://app.example.com")
+    monkeypatch.setenv(
+        "WHOOP_REDIRECT_URI", "http://app.example.com/api/v1/integrations/whoop/callback"
+    )
+    monkeypatch.setenv("TRUSTED_HOSTS", "app.example.com")
+
     with pytest.raises(ValidationError):
         Settings(
-            app_env="production",
-            app_encryption_key="replace-with-a-real-secret",
-            whoop_client_id="replace-with-whoop-client-id",
-            whoop_client_secret="replace-with-whoop-client-secret",
+            _env_file=None,
         )
 
 

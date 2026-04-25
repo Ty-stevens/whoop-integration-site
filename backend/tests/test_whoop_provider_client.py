@@ -65,15 +65,17 @@ def save_tokens(
 def token_json(
     *,
     access_token: str = "new-access-token",
-    refresh_token: str = "new-refresh-token",
+    refresh_token: str | None = "new-refresh-token",
     expires_in: int = 3600,
 ) -> dict:
-    return {
+    payload = {
         "access_token": access_token,
-        "refresh_token": refresh_token,
         "expires_in": expires_in,
         "scope": "read:workout read:sleep read:recovery",
     }
+    if refresh_token is not None:
+        payload["refresh_token"] = refresh_token
+    return payload
 
 
 def empty_collection(next_token: str | None = None) -> dict:
@@ -143,6 +145,38 @@ def test_nearly_expired_token_refreshes_before_provider_request():
     assert len(pages) == 1
     assert row is not None
     assert row.last_token_refresh_at_utc is not None
+
+
+def test_refresh_response_without_refresh_token_reuses_existing_refresh_token():
+    settings = configured_settings()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url == settings.whoop_token_url:
+            return httpx.Response(
+                200,
+                json=token_json(access_token="fresh-access", refresh_token=None),
+            )
+        return httpx.Response(200, json=empty_collection())
+
+    with SessionLocal() as db:
+        save_tokens(
+            db,
+            settings,
+            access_token="stale-access",
+            refresh_token="keep-refresh",
+            expires_in=60,
+        )
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        pages = provider_client(db, settings, client).fetch_workouts()
+        row = db.get(WhoopConnectionModel, 1)
+
+    assert len(pages) == 1
+    assert row is not None
+    decrypted_refresh_token = decrypt_secret(
+        row.refresh_token_encrypted,
+        settings.app_encryption_key,
+    )
+    assert decrypted_refresh_token == "keep-refresh"
 
 
 def test_collection_methods_use_base_url_paths_query_params_and_bearer_token():
@@ -232,6 +266,34 @@ def test_malformed_json_response_raises_provider_error():
         client = httpx.Client(transport=httpx.MockTransport(handler))
         with pytest.raises(WhoopProviderError, match="not valid JSON"):
             provider_client(db, settings, client).fetch_workouts()
+
+
+def test_malformed_record_is_reported_without_dropping_valid_records():
+    settings = configured_settings()
+    payload = {
+        "records": [
+            {
+                "id": "workout-1",
+                "start": "2026-04-01T10:00:00Z",
+                "end": "2026-04-01T11:00:00Z",
+                "score_state": "SCORED",
+            },
+            {"id": "bad-workout", "end": "2026-04-01T11:00:00Z"},
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    with SessionLocal() as db:
+        save_tokens(db, settings)
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        pages = provider_client(db, settings, client).fetch_workouts()
+
+    assert len(pages) == 1
+    assert len(pages[0].parsed.records) == 1
+    assert len(pages[0].raw_payload["records"]) == 1
+    assert len(pages[0].invalid_record_errors) == 1
 
 
 def test_unauthorized_response_refreshes_once_and_retries_original_request():

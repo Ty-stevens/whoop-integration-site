@@ -97,3 +97,25 @@ class SyncRepository:
             .order_by(SyncRunModel.id.desc())
             .first()
         )
+
+    def mark_stale_running_runs_failed(
+        self,
+        *,
+        cutoff_utc: datetime,
+        error_message: str,
+    ) -> int:
+        rows = (
+            self.db.query(SyncRunModel)
+            .filter(
+                SyncRunModel.status == "running",
+                SyncRunModel.started_at_utc < cutoff_utc,
+            )
+            .all()
+        )
+        for row in rows:
+            row.status = "failed"
+            row.finished_at_utc = datetime.now(UTC)
+            row.error_message = error_message
+        if rows:
+            self.db.commit()
+        return len(rows)

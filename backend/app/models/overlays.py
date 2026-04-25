@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     Date,
     DateTime,
@@ -76,6 +77,8 @@ class GoalProfileModel(Base):
     cardio_sessions_target: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     strength_sessions_target: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     created_reason: Mapped[str | None] = mapped_column(String(240))
+    created_source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
+    ai_provenance_json: Mapped[dict | None] = mapped_column(JSON)
     created_at_utc: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -121,4 +124,3 @@ class SyncRunModel(Base):
         default=utc_default,
     )
     finished_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-

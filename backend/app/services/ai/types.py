@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 AiProviderName = Literal["disabled", "openai_compatible", "openclaw"]
+AiResponseFormat = dict[str, Any]
 
 
 @dataclass(frozen=True)

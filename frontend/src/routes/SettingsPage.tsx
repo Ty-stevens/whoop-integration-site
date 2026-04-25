@@ -8,7 +8,16 @@ import { ErrorState } from "../components/ui/ErrorState";
 import { LoadingState } from "../components/ui/LoadingState";
 import { PageHeader } from "../components/ui/PageHeader";
 import { SectionShell } from "../components/ui/SectionShell";
-import { apiFetch, apiOpenRedirect, type AiStatus, type AppSettings, type AthleteProfile, type WhoopStatus } from "../lib/api";
+import {
+  apiFetch,
+  apiOpenRedirect,
+  isApiOfflineError,
+  isApiUnauthorizedError,
+  type AiStatus,
+  type AppSettings,
+  type AthleteProfile,
+  type WhoopStatus
+} from "../lib/api";
 
 type ProfileForm = {
   display_name: string;
@@ -51,6 +60,16 @@ function nullableNumber(value: string) {
 
 function nullableString(value: string) {
   return value.trim() ? value.trim() : null;
+}
+
+function queryErrorMessage(error: unknown, unavailableMessage: string) {
+  if (isApiUnauthorizedError(error)) {
+    return "API access is locked. Use the API token, then reload this page.";
+  }
+  if (isApiOfflineError(error)) {
+    return "Backend is offline. Start the API on port 8000, then retry.";
+  }
+  return unavailableMessage;
 }
 
 export function SettingsPage() {
@@ -136,6 +155,9 @@ export function SettingsPage() {
     saveProfile.mutate();
   }
 
+  const profileUnavailable = !profileQuery.data;
+  const settingsUnavailable = !settingsQuery.data;
+
   return (
     <>
       <PageHeader title="Settings" eyebrow="Private Control" />
@@ -143,7 +165,14 @@ export function SettingsPage() {
       <SectionShell title="WHOOP Connection">
         <Card>
           {whoopQuery.isLoading ? <LoadingState message="Checking WHOOP connection" /> : null}
-          {whoopQuery.isError ? <ErrorState message="WHOOP status is unavailable. Start the backend and retry." /> : null}
+          {whoopQuery.isError ? (
+            <ErrorState
+              message={queryErrorMessage(
+                whoopQuery.error,
+                "WHOOP status is unavailable. Check the backend connection and retry."
+              )}
+            />
+          ) : null}
           {whoopQuery.data ? (
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -192,13 +221,21 @@ export function SettingsPage() {
       <SectionShell title="Athlete Profile">
         <Card>
           {profileQuery.isLoading ? <LoadingState message="Loading profile" /> : null}
-          {profileQuery.isError ? <ErrorState message="Athlete profile is unavailable." /> : null}
+          {profileQuery.isError ? (
+            <ErrorState
+              message={queryErrorMessage(
+                profileQuery.error,
+                "Athlete profile is unavailable."
+              )}
+            />
+          ) : null}
           <form className="grid gap-4 lg:grid-cols-2" onSubmit={onProfileSubmit}>
             <label className="grid gap-2 text-sm">
               Display name
               <input
                 className="rounded-md border border-line bg-raised px-3 py-2 text-primary"
                 value={profileForm.display_name}
+                disabled={profileUnavailable}
                 onChange={(event) => setProfileForm({ ...profileForm, display_name: event.target.value })}
               />
             </label>
@@ -207,6 +244,7 @@ export function SettingsPage() {
               <input
                 className="rounded-md border border-line bg-raised px-3 py-2 text-primary"
                 value={profileForm.gender}
+                disabled={profileUnavailable}
                 onChange={(event) => setProfileForm({ ...profileForm, gender: event.target.value })}
               />
             </label>
@@ -218,6 +256,7 @@ export function SettingsPage() {
                 min="13"
                 max="120"
                 value={profileForm.age_years}
+                disabled={profileUnavailable}
                 onChange={(event) => setProfileForm({ ...profileForm, age_years: event.target.value })}
               />
             </label>
@@ -229,6 +268,7 @@ export function SettingsPage() {
                 min="80"
                 max="260"
                 value={profileForm.height_cm}
+                disabled={profileUnavailable}
                 onChange={(event) => setProfileForm({ ...profileForm, height_cm: event.target.value })}
               />
             </label>
@@ -240,6 +280,7 @@ export function SettingsPage() {
                 min="25"
                 max="350"
                 value={profileForm.weight_kg}
+                disabled={profileUnavailable}
                 onChange={(event) => setProfileForm({ ...profileForm, weight_kg: event.target.value })}
               />
             </label>
@@ -248,6 +289,7 @@ export function SettingsPage() {
               <select
                 className="rounded-md border border-line bg-raised px-3 py-2 text-primary"
                 value={profileForm.experience_level}
+                disabled={profileUnavailable}
                 onChange={(event) => setProfileForm({ ...profileForm, experience_level: event.target.value })}
               >
                 <option value="">Unset</option>
@@ -262,6 +304,7 @@ export function SettingsPage() {
               <textarea
                 className="min-h-24 rounded-md border border-line bg-raised px-3 py-2 text-primary"
                 value={profileForm.training_focus}
+                disabled={profileUnavailable}
                 onChange={(event) => setProfileForm({ ...profileForm, training_focus: event.target.value })}
               />
             </label>
@@ -270,13 +313,17 @@ export function SettingsPage() {
               <textarea
                 className="min-h-24 rounded-md border border-line bg-raised px-3 py-2 text-primary"
                 value={profileForm.notes_for_ai}
+                disabled={profileUnavailable}
                 onChange={(event) => setProfileForm({ ...profileForm, notes_for_ai: event.target.value })}
               />
             </label>
             <div className="lg:col-span-2">
-              <Button type="submit" disabled={saveProfile.isPending}>
+              <Button type="submit" disabled={profileUnavailable || saveProfile.isPending}>
                 {saveProfile.isPending ? "Saving" : "Save profile"}
               </Button>
+              {profileUnavailable ? (
+                <p className="mt-2 text-sm text-muted">Profile editing is disabled until the API loads successfully.</p>
+              ) : null}
               {saveProfile.isError ? <p className="mt-2 text-sm text-red-200">Profile validation failed.</p> : null}
               {saveProfile.isSuccess ? <p className="mt-2 text-sm text-accent">Profile saved.</p> : null}
             </div>
@@ -286,6 +333,14 @@ export function SettingsPage() {
 
       <SectionShell title="App Preferences">
         <Card>
+          {settingsQuery.isError ? (
+            <ErrorState
+              message={queryErrorMessage(
+                settingsQuery.error,
+                "App preferences are unavailable."
+              )}
+            />
+          ) : null}
           {settingsQuery.data ? (
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -296,7 +351,7 @@ export function SettingsPage() {
               </div>
               <Button
                 variant="secondary"
-                disabled={saveSettings.isPending}
+                disabled={settingsUnavailable || saveSettings.isPending}
                 onClick={() =>
                   saveSettings.mutate({
                     ...settingsQuery.data,
@@ -316,7 +371,14 @@ export function SettingsPage() {
       <SectionShell title="AI Status">
         <Card>
           {aiStatusQuery.isLoading ? <LoadingState message="Checking AI status" /> : null}
-          {aiStatusQuery.isError ? <ErrorState message="AI status is unavailable." /> : null}
+          {aiStatusQuery.isError ? (
+            <ErrorState
+              message={queryErrorMessage(
+                aiStatusQuery.error,
+                "AI status is unavailable."
+              )}
+            />
+          ) : null}
           {aiStatusQuery.data ? (
             <div className="grid gap-3 text-sm sm:grid-cols-3">
               <div>

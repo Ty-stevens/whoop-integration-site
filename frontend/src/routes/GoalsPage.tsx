@@ -12,6 +12,7 @@ import { StatBlock } from "../components/ui/StatBlock";
 import {
   apiFetch,
   type ActiveGoalProfileResponse,
+  type AiBenchmarkUpdateResponse,
   type AiGoalSuggestionsResponse,
   type GoalProfile,
   type GoalProfileCreateInput,
@@ -105,6 +106,28 @@ export function GoalsPage() {
       })
   });
 
+  const benchmarkUpdate = useMutation({
+    mutationFn: (apply: boolean) =>
+      apiFetch<AiBenchmarkUpdateResponse>("/api/v1/ai/benchmark-update", {
+        method: "POST",
+        body: JSON.stringify({
+          apply,
+          effective_from_date: form.effective_from_date
+        })
+      }),
+    onSuccess: async (data) => {
+      if (!data.applied || !data.profile) {
+        return;
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["goals", "active"] }),
+        queryClient.invalidateQueries({ queryKey: ["goals", "history"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard", "current-week"] })
+      ]);
+      setForm(profileToForm(data.profile));
+    }
+  });
+
   function onSubmit(event: FormEvent) {
     event.preventDefault();
     createGoal.mutate({
@@ -116,6 +139,23 @@ export function GoalsPage() {
       zone5_target_minutes: toNumber(form.zone5_target_minutes),
       cardio_sessions_target: toNumber(form.cardio_sessions_target),
       strength_sessions_target: toNumber(form.strength_sessions_target)
+    });
+  }
+
+  function loadBenchmarkTargets() {
+    const targets = benchmarkUpdate.data?.proposal?.targets;
+    if (!targets) {
+      return;
+    }
+    setForm({
+      effective_from_date: form.effective_from_date,
+      zone1_target_minutes: String(targets.zone1_target_minutes),
+      zone2_target_minutes: String(targets.zone2_target_minutes),
+      zone3_target_minutes: String(targets.zone3_target_minutes),
+      zone4_target_minutes: String(targets.zone4_target_minutes),
+      zone5_target_minutes: String(targets.zone5_target_minutes),
+      cardio_sessions_target: String(targets.cardio_sessions_target),
+      strength_sessions_target: String(targets.strength_sessions_target)
     });
   }
 
@@ -312,6 +352,79 @@ export function GoalsPage() {
           ) : null}
           {goalSuggestions.isError ? (
             <p className="mt-3 text-sm text-red-200">Goal suggestions are unavailable.</p>
+          ) : null}
+        </Card>
+      </SectionShell>
+
+      <SectionShell title="AI Benchmark Update">
+        <Card>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="font-semibold">Benchmark targets</p>
+              <p className="mt-1 text-sm text-muted">
+                Uses server-side report and WHOOP-derived metrics, then saves only after you apply.
+              </p>
+              {benchmarkUpdate.data ? (
+                <p className="mt-3 text-sm text-muted">{benchmarkUpdate.data.message}</p>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                disabled={benchmarkUpdate.isPending}
+                onClick={() => benchmarkUpdate.mutate(false)}
+              >
+                {benchmarkUpdate.isPending ? "Checking" : "Preview update"}
+              </Button>
+              <Button
+                disabled={benchmarkUpdate.isPending}
+                onClick={() => benchmarkUpdate.mutate(true)}
+              >
+                {benchmarkUpdate.isPending ? "Applying" : "Apply AI update"}
+              </Button>
+            </div>
+          </div>
+          {benchmarkUpdate.data?.proposal ? (
+            <div className="mt-4 space-y-3">
+              <div className="rounded-md border border-line bg-raised p-4">
+                <p className="font-semibold">
+                  Z2 {benchmarkUpdate.data.proposal.targets.zone2_target_minutes} min · cardio{" "}
+                  {benchmarkUpdate.data.proposal.targets.cardio_sessions_target} · strength{" "}
+                  {benchmarkUpdate.data.proposal.targets.strength_sessions_target}
+                </p>
+                <p className="mt-1 text-sm text-muted">{benchmarkUpdate.data.proposal.summary}</p>
+                <p className="mt-2 text-xs uppercase text-muted">
+                  Confidence {benchmarkUpdate.data.proposal.confidence}
+                </p>
+                {!benchmarkUpdate.data.applied ? (
+                  <Button className="mt-3" variant="secondary" onClick={loadBenchmarkTargets}>
+                    Load into form
+                  </Button>
+                ) : null}
+              </div>
+              {benchmarkUpdate.data.proposal.changes.map((change) => (
+                <div key={change.metric} className="rounded-md border border-line bg-surface p-4">
+                  <p className="font-semibold">
+                    {change.metric.split("_").join(" ")}: {change.current_value} to {change.recommended_value}
+                  </p>
+                  <p className="mt-1 text-sm text-muted">{change.reason}</p>
+                  {change.sources.length ? (
+                    <p className="mt-2 text-xs text-muted">
+                      Sources{" "}
+                      {change.sources
+                        .map(
+                          (source) =>
+                            `${source.source_type}${source.date ? ` ${source.date}` : ""} ${source.metric}`
+                        )
+                        .join(" · ")}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {benchmarkUpdate.isError ? (
+            <p className="mt-3 text-sm text-red-200">AI benchmark update is unavailable.</p>
           ) : null}
         </Card>
       </SectionShell>

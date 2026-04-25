@@ -29,12 +29,22 @@ class GoalProfileService:
     def history(self) -> list[GoalProfileModel]:
         return self.repository.history()
 
-    def create_profile(self, payload: GoalProfileCreate) -> GoalProfileModel:
+    def create_profile(
+        self,
+        payload: GoalProfileCreate,
+        *,
+        created_source: str = "manual",
+        ai_provenance_json: dict | None = None,
+    ) -> GoalProfileModel:
         self._validate_profile_dates(payload.effective_from_date, payload.effective_to_date)
         self._reject_closed_overlap(payload.effective_from_date, payload.effective_to_date)
         self._close_previous_open_profile(payload.effective_from_date)
 
-        row = GoalProfileModel(**payload.model_dump())
+        row = GoalProfileModel(
+            **payload.model_dump(),
+            created_source=created_source,
+            ai_provenance_json=ai_provenance_json,
+        )
         self.db.add(row)
         self.db.commit()
         self.db.refresh(row)

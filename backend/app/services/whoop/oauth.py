@@ -9,7 +9,7 @@ from app.core.security import generate_state_token
 from app.core.time import ensure_utc
 from app.models.oauth_state import OAuthStateModel
 
-WHOOP_SCOPES = "read:profile read:cycles read:recovery read:sleep read:workout"
+WHOOP_SCOPES = "offline read:profile read:cycles read:recovery read:sleep read:workout"
 
 
 class OAuthStateError(ValueError):
@@ -57,4 +57,3 @@ def build_authorization_url(settings: Settings, state: str) -> str:
         }
     )
     return f"{settings.whoop_authorization_url}?{params}"
-
