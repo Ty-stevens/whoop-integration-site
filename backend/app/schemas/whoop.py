@@ -23,3 +23,7 @@ class WhoopStatus(BaseModel):
 class WhoopConnectUnavailable(BaseModel):
     status: Literal["config_missing"] = "config_missing"
     message: str
+
+
+class WhoopConnectStart(BaseModel):
+    authorization_url: str

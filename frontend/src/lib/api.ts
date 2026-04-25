@@ -58,6 +58,12 @@ export function apiUrl(path: string) {
   return `${apiBaseUrl}${path}`;
 }
 
+export const browserNavigation = {
+  assign(url: string) {
+    window.location.assign(url);
+  }
+};
+
 function authHeaders(initHeaders?: unknown) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -72,8 +78,8 @@ function authHeaders(initHeaders?: unknown) {
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(apiUrl(path), {
-    headers: authHeaders(init?.headers),
-    ...init
+    ...init,
+    headers: authHeaders(init?.headers)
   });
 
   const contentType = response.headers.get("content-type") ?? "";
@@ -96,20 +102,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 }
 
 export async function apiOpenRedirect(path: string): Promise<void> {
-  const response = await fetch(apiUrl(path), {
-    method: "GET",
-    headers: authHeaders(),
-    redirect: "manual"
-  });
-  const location = response.headers.get("location");
-  if (response.status >= 300 && response.status < 400 && location) {
-    window.location.assign(location);
-    return;
+  const response = await apiFetch<{ authorization_url: string }>(path);
+  if (!response.authorization_url) {
+    throw new ApiError("WHOOP connect request failed", 502, response);
   }
-
-  const contentType = response.headers.get("content-type") ?? "";
-  const details = contentType.includes("application/json") ? await response.json() : await response.text();
-  throw new ApiError("WHOOP connect request failed", response.status, details);
+  browserNavigation.assign(response.authorization_url);
 }
 
 export function isApiError(error: unknown): error is ApiError {

@@ -3,7 +3,7 @@ from fastapi.responses import RedirectResponse
 
 from app.api.deps import DbSession, require_api_auth
 from app.core.config import Settings, get_settings
-from app.schemas.whoop import WhoopConnectUnavailable, WhoopStatus
+from app.schemas.whoop import WhoopConnectStart, WhoopConnectUnavailable, WhoopStatus
 from app.services.whoop.auth_service import WhoopAuthService
 from app.services.whoop.oauth import OAuthStateError
 
@@ -62,6 +62,26 @@ def whoop_connect(
             message="WHOOP credentials are not configured. Local boot does not require them."
         )
     return RedirectResponse(authorization_url)
+
+
+@router.get("/connect/start", response_model=WhoopConnectStart)
+def whoop_connect_start(
+    db: DbSession,
+    _: None = Depends(require_api_auth),
+) -> WhoopConnectStart:
+    settings = get_settings()
+    if not settings.whoop_credentials_configured:
+        raise HTTPException(
+            status_code=503,
+            detail="WHOOP credentials are not configured. Local boot does not require them.",
+        )
+    authorization_url = WhoopAuthService(db).authorization_url()
+    if authorization_url is None:
+        raise HTTPException(
+            status_code=503,
+            detail="WHOOP credentials are not configured. Local boot does not require them.",
+        )
+    return WhoopConnectStart(authorization_url=authorization_url)
 
 
 @router.get("/callback")

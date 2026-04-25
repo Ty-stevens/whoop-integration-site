@@ -51,6 +51,24 @@ def test_connect_builds_authorization_url_without_secret(monkeypatch):
     assert "client-secret" not in location
 
 
+def test_connect_start_returns_authorization_url_without_secret(monkeypatch):
+    monkeypatch.setenv("WHOOP_CLIENT_ID", "client-id")
+    monkeypatch.setenv("WHOOP_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("APP_ENCRYPTION_KEY", "test-encryption-key")
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+
+    response = client.get("/api/v1/integrations/whoop/connect/start")
+
+    assert response.status_code == 200
+    authorization_url = response.json()["authorization_url"]
+    parsed = urlparse(authorization_url)
+    params = parse_qs(parsed.query)
+    assert params["client_id"] == ["client-id"]
+    assert "state" in params
+    assert "client-secret" not in authorization_url
+
+
 def test_callback_rejects_missing_or_invalid_state(client):
     missing = client.get("/api/v1/integrations/whoop/callback?code=abc")
     invalid = client.get("/api/v1/integrations/whoop/callback?code=abc&state=not-real")

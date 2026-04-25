@@ -145,7 +145,7 @@ export function SettingsPage() {
 
   const connectWhoop = useMutation({
     mutationFn: async () => {
-      await apiOpenRedirect("/api/v1/integrations/whoop/connect");
+      await apiOpenRedirect("/api/v1/integrations/whoop/connect/start");
       return true;
     }
   });
