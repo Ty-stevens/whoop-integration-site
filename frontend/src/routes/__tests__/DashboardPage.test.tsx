@@ -77,4 +77,48 @@ describe("DashboardPage", () => {
     expect(screen.getByText("30 min over target")).toBeInTheDocument();
     expect(screen.getByText("Sync completed successfully.")).toBeInTheDocument();
   });
+
+  it("shows actual HR zone minutes when benchmark targets are unset", async () => {
+    vi.mocked(fetch).mockImplementation((input: Parameters<typeof fetch>[0]) => {
+      const url = input.toString();
+      if (url.endsWith("/api/v1/dashboard/current-week")) {
+        return Promise.resolve(
+          Response.json({
+            ...dashboardResponse,
+            has_goal_profile: false,
+            goal_profile_id: null,
+            zones: [
+              {
+                zone: 1,
+                actual_seconds: 1800,
+                actual_minutes: 30,
+                target_minutes: 0,
+                percent_complete: null,
+                remaining_minutes: 0,
+                exceeded: true
+              },
+              {
+                zone: 2,
+                actual_seconds: 3600,
+                actual_minutes: 60,
+                target_minutes: 0,
+                percent_complete: null,
+                remaining_minutes: 0,
+                exceeded: true
+              }
+            ]
+          })
+        );
+      }
+      if (url.endsWith("/api/v1/sync/status")) {
+        return Promise.resolve(Response.json(syncStatusResponse));
+      }
+      return Promise.reject(new Error(`Unexpected URL ${url}`));
+    });
+
+    renderWithQueryClient(<DashboardPage />);
+
+    expect(await screen.findByText("30 min logged")).toBeInTheDocument();
+    expect(screen.getByText("67% of HR zone time")).toBeInTheDocument();
+  });
 });

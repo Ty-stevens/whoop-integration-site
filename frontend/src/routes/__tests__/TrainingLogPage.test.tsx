@@ -76,6 +76,8 @@ describe("TrainingLogPage", () => {
 
     expect(await screen.findByText("Weightlifting")).toBeInTheDocument();
     expect(screen.getByText("Strength sessions")).toBeInTheDocument();
+    expect(screen.getByText("Z1")).toBeInTheDocument();
+    expect(screen.getByText("15 min")).toBeInTheDocument();
     expect(screen.getByDisplayValue("gym")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Bench day")).toBeInTheDocument();
   });

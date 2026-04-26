@@ -20,6 +20,7 @@ import {
   type WorkoutSummary
 } from "../lib/api";
 import { formatLongDate } from "../lib/dates";
+import { zoneColors, zoneLabels } from "../lib/zones";
 
 type FormState = {
   manual_classification: "" | Classification;
@@ -50,6 +51,16 @@ function formFromAnnotation(annotation: WorkoutAnnotation | null): FormState {
 function nullable(value: string) {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function workoutZones(workout: WorkoutSummary) {
+  return [1, 2, 3, 4, 5].map((zone) => ({
+    zone,
+    seconds: workout[`zone${zone}_seconds` as keyof Pick<
+      WorkoutSummary,
+      "zone1_seconds" | "zone2_seconds" | "zone3_seconds" | "zone4_seconds" | "zone5_seconds"
+    >] as number
+  }));
 }
 
 export function TrainingLogPage() {
@@ -174,6 +185,8 @@ export function TrainingLogPage() {
           <div className="space-y-4">
             {workoutsQuery.data.workouts.map((workout) => {
               const form = getForm(workout);
+              const zones = workoutZones(workout);
+              const totalZoneSeconds = zones.reduce((total, zone) => total + zone.seconds, 0);
               return (
                 <Card key={workout.id}>
                   <div className="grid gap-4 lg:grid-cols-[1.1fr_2fr]">
@@ -185,6 +198,27 @@ export function TrainingLogPage() {
                       <p className="mt-2 text-sm">
                         {workout.effective_classification} · strain {workout.strain ?? "—"} · HR {workout.average_hr ?? "—"} / {workout.max_hr ?? "—"}
                       </p>
+                      <div className="mt-4 grid grid-cols-5 gap-2">
+                        {zones.map((zone) => {
+                          const key = `zone${zone.zone}` as keyof typeof zoneLabels;
+                          const share = totalZoneSeconds > 0 ? (zone.seconds / totalZoneSeconds) * 100 : 0;
+                          return (
+                            <div key={zone.zone} className="min-w-0 rounded-md border border-line bg-surface/60 p-2">
+                              <div className="mb-2 h-1.5 overflow-hidden rounded-sm bg-black/40">
+                                <div
+                                  className="h-full rounded-sm"
+                                  style={{
+                                    width: `${zone.seconds > 0 ? Math.max(share, 2) : 0}%`,
+                                    background: zoneColors[key]
+                                  }}
+                                />
+                              </div>
+                              <p className="text-xs font-semibold">{zoneLabels[key].replace("Zone ", "Z")}</p>
+                              <p className="mt-1 text-xs text-muted">{secondsLabel(zone.seconds)}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                     <div className="grid gap-3 lg:grid-cols-2">
                       <label className="grid gap-2 text-sm">

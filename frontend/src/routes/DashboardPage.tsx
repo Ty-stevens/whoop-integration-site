@@ -64,6 +64,13 @@ function formatPercent(value: number | null) {
   return value === null ? "—" : `${Math.round(value)}%`;
 }
 
+function formatSharePercent(value: number) {
+  if (value > 0 && value < 1) {
+    return "<1%";
+  }
+  return `${Math.round(value)}%`;
+}
+
 function formatSeconds(seconds: number) {
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) {
@@ -91,7 +98,43 @@ function syncBadge(status: SyncStatus["status"]) {
   return "Idle";
 }
 
-function zoneStatusText(zone: CurrentWeekDashboard["zones"][number]) {
+function zoneShare(zone: CurrentWeekDashboard["zones"][number], totalZoneSeconds: number) {
+  if (totalZoneSeconds <= 0) {
+    return 0;
+  }
+  return (zone.actual_seconds / totalZoneSeconds) * 100;
+}
+
+function zoneProgressValue(zone: CurrentWeekDashboard["zones"][number], totalZoneSeconds: number) {
+  if (zone.percent_complete !== null) {
+    return zone.percent_complete;
+  }
+  const share = zoneShare(zone, totalZoneSeconds);
+  return zone.actual_seconds > 0 ? Math.max(share, 2) : 0;
+}
+
+function zoneHeaderText(zone: CurrentWeekDashboard["zones"][number]) {
+  if (zone.target_minutes > 0) {
+    return formatPercent(zone.percent_complete);
+  }
+  return minutesLabel(zone.actual_minutes);
+}
+
+function zoneDetailText(zone: CurrentWeekDashboard["zones"][number]) {
+  if (zone.target_minutes > 0) {
+    return `${minutesLabel(zone.actual_minutes)} of ${minutesLabel(zone.target_minutes)}`;
+  }
+  return `${minutesLabel(zone.actual_minutes)} logged`;
+}
+
+function zoneStatusText(zone: CurrentWeekDashboard["zones"][number], totalZoneSeconds: number) {
+  if (zone.target_minutes === 0) {
+    if (zone.actual_seconds <= 0) {
+      return "No time logged";
+    }
+    return `${formatSharePercent(zoneShare(zone, totalZoneSeconds))} of HR zone time`;
+  }
+
   if (zone.remaining_minutes > 0) {
     return `${minutesLabel(zone.remaining_minutes)} remaining`;
   }
@@ -133,6 +176,7 @@ export function DashboardPage() {
 
   const dashboardData = isDashboardPayload(dashboardQuery.data) ? dashboardQuery.data : null;
   const syncData = isSyncPayload(syncStatusQuery.data) ? syncStatusQuery.data : null;
+  const totalZoneSeconds = dashboardData?.zones.reduce((total, zone) => total + zone.actual_seconds, 0) ?? 0;
 
   const weekLabel = dashboardData
     ? formatDateRangeLabel(dashboardData.week_start_date, dashboardData.week_end_date)
@@ -187,14 +231,14 @@ export function DashboardPage() {
                 <Card key={zone.zone}>
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <p className="font-semibold">{zoneLabels[`zone${zone.zone}` as keyof typeof zoneLabels]}</p>
-                    <span className="text-sm text-muted">{formatPercent(zone.percent_complete)}</span>
+                    <span className="text-sm text-muted">{zoneHeaderText(zone)}</span>
                   </div>
-                  <ProgressBar value={zone.percent_complete ?? 0} color={zoneColors[`zone${zone.zone}` as keyof typeof zoneColors]} />
+                  <ProgressBar value={zoneProgressValue(zone, totalZoneSeconds)} color={zoneColors[`zone${zone.zone}` as keyof typeof zoneColors]} />
                   <p className="mt-3 text-sm text-muted">
-                    {minutesLabel(zone.actual_minutes)} of {minutesLabel(zone.target_minutes)}
+                    {zoneDetailText(zone)}
                   </p>
                   <p className="mt-1 text-xs text-muted">
-                    {zoneStatusText(zone)}
+                    {zoneStatusText(zone, totalZoneSeconds)}
                   </p>
                 </Card>
               ))}
